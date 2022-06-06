@@ -36,6 +36,7 @@ struct instruction
     string label;
     string opcode;
     string operand;
+    int obj_code = 0x0;
     int is_directive = 0;
 };
 
