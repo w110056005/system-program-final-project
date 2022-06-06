@@ -41,7 +41,7 @@ struct instruction
 
 int main()
 {
-    instruction instructions[500];
+    map<int, instruction> instructs;
     int location_counter = 0x0;
     map<string, int> symtab;
 
@@ -52,78 +52,75 @@ int main()
     getline(file_source, row);
     queue<string> temp;
     Split(row, '\t', temp);
-    instructions[0].label = temp.front();
+
+    instructs[0x0].label = temp.front();
     temp.pop();
-    instructions[0].opcode = temp.front();
+    instructs[0x0].opcode = temp.front();
     temp.pop();
-    instructions[0].operand = temp.front();
+    instructs[0x0].operand = temp.front();
     temp.pop();
-    instructions[0].is_directive = 1;
+    instructs[0x0].is_directive = 1;
 
     // 取得起始address in hex
-    string s = "0x" + instructions[0].operand;
+    string s = "0x" + instructs[0x0].operand;
     location_counter = std::stoul(s, nullptr, 16);
-    instructions[0].loc_count = location_counter;
+    instructs[0x0].loc_count = location_counter;
 
-    int index = 1;
     // pass1 > 計算location counter & Symbol Table
     while (getline(file_source, row))
     {
         queue<string> row_values;
         Split(row, '\t', row_values);
 
-        instructions[index].label = row_values.front();
+        instructs[location_counter].label = row_values.front();
         row_values.pop();
-        instructions[index].opcode = row_values.front();
+        instructs[location_counter].opcode = row_values.front();
         row_values.pop();
 
         // 避免沒有 operand 的指令造成錯誤, ex RSUB
         if (!row_values.empty())
         {
-            instructions[index].operand = row_values.front();
+            instructs[location_counter].operand = row_values.front();
             row_values.pop();
         }
 
         // 紀錄 END 標誌
-        instructions[index].opcode == "END"
-            ? instructions[index].is_directive = 1
-            : instructions[index].loc_count = location_counter;
+        instructs[location_counter].opcode == "END"
+            ? instructs[location_counter].is_directive = 1
+            : instructs[location_counter].loc_count = location_counter;
 
         // 如果有label 就寫到 Symbol table
-        if (!instructions[index].label.empty())
+        if (!instructs[location_counter].label.empty())
         {
-            symtab[instructions[index].label] = location_counter;
+            symtab[instructs[location_counter].label] = location_counter;
         }
 
         // 每行指令3bytes
         location_counter += 3;
-        index++;
     }
 
-    // Pass1 寫入檔案-加入location counter 的instructions
+    // Pass1 寫入檔案-加入location counter 的instructs
     ofstream ofs;
     ofs.open("pass1-instructions_with_loc.txt");
-    for (int i = 0;; i++)
-    {
-        ofs << hex << instructions[i].loc_count << "\t";
-        ofs << instructions[i].label << "\t";
-        ofs << instructions[i].opcode << "\t";
-        ofs << instructions[i].operand << endl;
 
-        if (instructions[i].opcode == "END")
-        {
-            break;
-        }
+    auto iter_inst = instructs.begin();
+    while (iter_inst != instructs.end())
+    {
+        ofs << hex << iter_inst->second.loc_count << "\t";
+        ofs << iter_inst->second.label << "\t";
+        ofs << iter_inst->second.opcode << "\t";
+        ofs << iter_inst->second.operand << endl;
+        ++iter_inst;
     }
     ofs.close();
 
     // Pass1 寫入檔案-Symbol Table
     ofs.open("pass1-symbol_table.txt");
-    auto iter = symtab.begin();
-    while (iter != symtab.end())
+    auto iter_symtab = symtab.begin();
+    while (iter_symtab != symtab.end())
     {
-        ofs << iter->first << "\t" << iter->second << endl;
-        ++iter;
+        ofs << iter_symtab->first << "\t" << iter_symtab->second << endl;
+        ++iter_symtab;
     }
     ofs.close();
 }
