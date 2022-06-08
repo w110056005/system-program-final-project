@@ -8,8 +8,11 @@ using namespace std;
 
 string source_path = "source.txt";
 string opcode_path = "opcode.txt";
+string pass1_instructions_path = "pass1-instructions_list.txt";
+string pass1_symtap_path = "pass1-symbol_table.txt";
+string pass2_instructions_path = "pass2-instructions_list.txt";
+string pass2_object_program_path = "pass2-object_program.txt";
 
-typedef struct optab optab;
 typedef struct instruction instruction;
 
 // 將輸入資料分割整理
@@ -24,25 +27,20 @@ void Split(const string &s, char delim, queue<string> &elems)
     }
 }
 
-struct optab
-{
-    string opcode;
-    int val = 0x0;
-};
-
 struct instruction
 {
     int loc_count = 0x0;
     string label;
     string opcode;
     string operand;
-    int obj_code = 0x0;
+    string obj_code;
     int is_directive = 0;
 };
 
 int main()
 {
     map<int, instruction> instructs;
+    map<string, string> optab;
     int location_counter = 0x0;
     map<string, int> symtab;
 
@@ -51,15 +49,15 @@ int main()
 
     // 紀錄Start
     getline(file_source, row);
-    queue<string> temp;
-    Split(row, '\t', temp);
+    queue<string> row_values;
+    Split(row, '\t', row_values);
 
-    instructs[0x0].label = temp.front();
-    temp.pop();
-    instructs[0x0].opcode = temp.front();
-    temp.pop();
-    instructs[0x0].operand = temp.front();
-    temp.pop();
+    instructs[0x0].label = row_values.front();
+    row_values.pop();
+    instructs[0x0].opcode = row_values.front();
+    row_values.pop();
+    instructs[0x0].operand = row_values.front();
+    row_values.pop();
     instructs[0x0].is_directive = 1;
 
     // 取得起始address in hex
@@ -70,7 +68,7 @@ int main()
     // pass1 > 計算location counter & Symbol Table
     while (getline(file_source, row))
     {
-        queue<string> row_values;
+        row_values = queue<string>(); // reset queue
         Split(row, '\t', row_values);
 
         instructs[location_counter].label = row_values.front();
@@ -96,13 +94,37 @@ int main()
             symtab[instructs[location_counter].label] = location_counter;
         }
 
-        // 每行指令3bytes
-        location_counter += 3;
+        // 計算下一指令的location counter
+        if (instructs[location_counter].opcode == "RESB")
+        {
+            // RESB 將operand 轉成數字後加入location
+            int reserve_bytes = stoi(instructs[location_counter].operand);
+            location_counter += reserve_bytes;
+        }
+        else if (instructs[location_counter].opcode == "BYTE")
+        {
+            // BYTE 有三種狀況
+            if (instructs[location_counter].operand[0] == 'C')
+            {
+                // Start with C (C'EOF')
+                location_counter += instructs[location_counter].operand.length() - 3;
+            }
+            else if (instructs[location_counter].operand[0] == 'X')
+            {
+                // Start with X (X'EOF')
+                location_counter += (instructs[location_counter].operand.length() - 3) / 2;
+            }
+            else
+                location_counter += 1;
+        }
+        else
+            // 其他指令都+3
+            location_counter += 3;
     }
 
     // Pass1 寫入檔案-加入location counter 的instructs
     ofstream ofs;
-    ofs.open("pass1-instructions_with_loc.txt");
+    ofs.open(pass1_instructions_path);
 
     auto iter_inst = instructs.begin();
     while (iter_inst != instructs.end())
@@ -116,7 +138,7 @@ int main()
     ofs.close();
 
     // Pass1 寫入檔案-Symbol Table
-    ofs.open("pass1-symbol_table.txt");
+    ofs.open(pass1_symtap_path);
     auto iter_symtab = symtab.begin();
     while (iter_symtab != symtab.end())
     {
@@ -124,4 +146,22 @@ int main()
         ++iter_symtab;
     }
     ofs.close();
+
+    /*
+    START Pass 2
+    */
+
+    // 讀取 opcode table，先將opcode table建立map
+    ifstream file_opcode(opcode_path, ifstream::in);
+    while (getline(file_opcode, row))
+    {
+        row_values = queue<string>(); // reset queue
+        Split(row, ' ', row_values);
+
+        string opcode = row_values.front();
+        row_values.pop();
+        optab[opcode] = row_values.front();
+        row_values.pop();
+        cout << opcode << " " << optab[opcode] << endl;
+    }
 }
