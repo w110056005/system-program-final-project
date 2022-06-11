@@ -34,7 +34,7 @@ struct instruction
     string label;
     string opcode;
     string operand;
-    string obj_code;
+    string obj_code = "";
     int is_directive = 0;
 };
 
@@ -48,10 +48,10 @@ string ToHexString(int source, int string_length)
 
 int main()
 {
-    map<int, instruction> instructs;
-    map<string, string> optab;
-    int location_counter = 0x0;
-    map<string, int> symtab;
+    map<int, instruction> instructs; // 紀錄instructions
+    map<string, string> optab;       // 紀錄OPTAB
+    int location_counter = 0x0;      // 紀錄location counter
+    map<string, int> symtab;         // 紀錄 symbol table
 
     string row;
     ifstream file_source(source_path, ifstream::in);
@@ -98,10 +98,14 @@ int main()
             row_values.pop();
         }
 
-        // 紀錄 END 標誌
-        instructs[location_counter].opcode == "END"
-            ? instructs[location_counter].is_directive = 1
-            : instructs[location_counter].loc_count = location_counter;
+        // 遇到END 就跳過，其他則紀錄location_counter
+        if (instructs[location_counter].opcode == "END")
+        {
+            instructs[location_counter].is_directive = 1;
+            continue;
+        }
+        else
+            instructs[location_counter].loc_count = location_counter;
 
         // 如果有label 就寫到 Symbol table
         if (!instructs[location_counter].label.empty())
@@ -126,7 +130,7 @@ int main()
             }
             else if (instructs[location_counter].operand[0] == 'X')
             {
-                // Start with X (X'EOF')
+                // Start with X (X'05')
                 location_counter += (instructs[location_counter].operand.length() - 3) / 2;
             }
             else
@@ -141,14 +145,14 @@ int main()
     ofstream ofs;
     ofs.open(pass1_instructions_path);
 
-    auto iter_inst = instructs.begin();
-    while (iter_inst != instructs.end())
+    auto iter = instructs.begin();
+    while (iter != instructs.end())
     {
-        ofs << hex << iter_inst->second.loc_count;
-        ofs << setw(8) << iter_inst->second.label;
-        ofs << setw(8) << iter_inst->second.opcode;
-        ofs << setw(10) << iter_inst->second.operand << endl;
-        ++iter_inst;
+        ofs << hex << iter->second.loc_count;
+        ofs << setw(8) << iter->second.label;
+        ofs << setw(8) << iter->second.opcode;
+        ofs << setw(10) << iter->second.operand << endl;
+        ++iter;
     }
     ofs.close();
 
@@ -181,74 +185,151 @@ int main()
         row_values.pop();
     }
 
-    iter_inst = instructs.begin();
-    while (iter_inst != instructs.end())
+    map<int, string> object_program; // 紀錄object program
+    int inst_count = 0;
+    int next_line_flag = 0;
+    int line = 0;
+    int text_start = 0x0;
+    int text_end = 0x0;
+    int increase_end = 1;
+    string text = "";
+
+    iter = instructs.begin();
+    while (iter != instructs.end())
     {
-        if (iter_inst->second.is_directive != 1)
+        if (iter->second.is_directive != 1)
         {
-            if (iter_inst->second.opcode == "BYTE")
+            if (increase_end)
+            {
+                text_end = iter->second.loc_count;
+                increase_end = 1;
+            }
+
+            if (inst_count == 10 || next_line_flag)
+            {
+                // object program 一行滿了，寫入並換行
+                ostringstream ss;
+                ss << "T " << uppercase << hex << text_start << " " << ToHexString(text_end - text_start, 2) << text;
+                object_program[line++] = ss.str();
+
+                // reset 所有flag
+                inst_count = 0;
+                next_line_flag = 0;
+                text_start = iter->second.loc_count;
+                text = "";
+                increase_end = 1;
+            }
+
+            if (iter->second.opcode == "BYTE")
             {
                 // BYTE系列另外處理
-                if (iter_inst->second.operand[0] == 'C')
+                if (iter->second.operand[0] == 'C')
                 {
                     // C: 將字串轉成ASCII 16進位
-                    string real_operand = iter_inst->second.operand.substr(2, iter_inst->second.operand.size() - 3);
+                    string real_operand = iter->second.operand.substr(2, iter->second.operand.size() - 3);
                     for (unsigned i = 0; i < real_operand.size(); i++)
                     {
-                        iter_inst->second.obj_code += ToHexString(int(real_operand[i]), 2);
+                        iter->second.obj_code += ToHexString(int(real_operand[i]), 2);
                     }
                 }
-                else if (iter_inst->second.operand[0] == 'X')
+                else if (iter->second.operand[0] == 'X')
                 {
                     // X: 直接輸出文字
-                    iter_inst->second.obj_code = iter_inst->second.operand.substr(2, iter_inst->second.operand.size() - 3);
+                    iter->second.obj_code = iter->second.operand.substr(2, iter->second.operand.size() - 3);
                 }
             }
-            else if (iter_inst->second.opcode == "RESW" || iter_inst->second.opcode == "RESB")
+            else if (iter->second.opcode == "RESW")
             {
                 // RES 系列不產生 object code
-                // Do nothing
+                increase_end = 0;
             }
-            else if (iter_inst->second.opcode == "WORD")
+            else if (iter->second.opcode == "RESB")
+            {
+                // RES 系列不產生 object code
+                // 遇到 RESB 要換行
+                next_line_flag = 1;
+                increase_end = 0;
+            }
+            else if (iter->second.opcode == "WORD")
             {
                 // WORD 把後面數值直接轉16進位並補滿6位
-                int number = stoi(iter_inst->second.operand);
-                iter_inst->second.obj_code = ToHexString(number, 6);
+                int number = stoi(iter->second.operand);
+                iter->second.obj_code = ToHexString(number, 6);
             }
-            else if (iter_inst->second.opcode == "RSUB")
+            else if (iter->second.opcode == "RSUB")
             {
                 // RSUB 輸出OP code 後面補滿0
-                iter_inst->second.obj_code = optab[iter_inst->second.opcode] + "0000";
+                iter->second.obj_code = optab[iter->second.opcode] + "0000";
             }
-            else if (iter_inst->second.operand.find(",X") != std::string::npos)
+            else if (iter->second.operand.find(",X") != std::string::npos)
             {
                 // Index addressing, add 0x8000讓 X bit == 1
-                string real_operand = iter_inst->second.operand.substr(0, iter_inst->second.operand.size() - 2);
-                iter_inst->second.obj_code = optab[iter_inst->second.opcode] + ToHexString(symtab[real_operand] + 0x8000, 4);
+                string real_operand = iter->second.operand.substr(0, iter->second.operand.size() - 2);
+                iter->second.obj_code = optab[iter->second.opcode] + ToHexString(symtab[real_operand] + 0x8000, 4);
             }
             else
             {
-                iter_inst->second.obj_code = optab[iter_inst->second.opcode] + ToHexString(symtab[iter_inst->second.operand], 4);
+                iter->second.obj_code = optab[iter->second.opcode] + ToHexString(symtab[iter->second.operand], 4);
+            }
+
+            //是有產生 object code的指令，將其記錄至暫存
+            if (iter->second.obj_code.size() > 0)
+            {
+                text += " " + iter->second.obj_code;
+                inst_count++;
+            }
+        }
+        else
+        {
+            if (iter->second.opcode == "START")
+            {
+                // 寫入 H line
+                ostringstream ss;
+                ss << "H " << iter->second.label << " " << ToHexString(iter->second.loc_count, 6) << " " << uppercase << hex << location_counter - instructs[0x0].loc_count;
+                object_program[line++] += ss.str();
+                text_start = iter->second.loc_count;
+            }
+            else if (iter->second.opcode == "END")
+            {
+                // 紀錄最後一組text
+                ostringstream ss1;
+                ss1 << "T " << uppercase << hex << text_start << " " << ToHexString(location_counter - text_start, 2) << text;
+                object_program[line++] = ss1.str();
+
+                // 寫入 E line
+                ostringstream ss2;
+                ss2 << "E " << ToHexString(instructs[0x0].loc_count, 6);
+                object_program[line] += ss2.str();
             }
         }
 
-        ++iter_inst;
+        ++iter;
     }
 
     // Pass2 寫入檔案-加入object code 的instructs
     ofs.open(pass2_instructions_path);
-    iter_inst = instructs.begin();
-    while (iter_inst != instructs.end())
+    iter = instructs.begin();
+    while (iter != instructs.end())
     {
-        if (iter_inst->second.loc_count != 0)
-            ofs << setw(6) << std::left << hex << iter_inst->second.loc_count;
+        if (iter->second.loc_count != 0)
+            ofs << setw(6) << std::left << hex << iter->second.loc_count;
         else
             ofs << setw(6) << std::left << "";
-        ofs << setw(8) << std::right << iter_inst->second.label;
-        ofs << setw(8) << iter_inst->second.opcode;
-        ofs << setw(10) << iter_inst->second.operand;
-        ofs << setw(10) << iter_inst->second.obj_code << endl;
-        ++iter_inst;
+        ofs << setw(8) << std::right << iter->second.label;
+        ofs << setw(8) << iter->second.opcode;
+        ofs << setw(10) << iter->second.operand;
+        ofs << setw(10) << iter->second.obj_code << endl;
+        ++iter;
+    }
+    ofs.close();
+
+    // Pass2 寫入檔案-object program
+    ofs.open(pass2_object_program_path);
+    auto iter_obj = object_program.begin();
+    while (iter_obj != object_program.end())
+    {
+        ofs << iter_obj->second << endl;
+        ++iter_obj;
     }
     ofs.close();
 }
