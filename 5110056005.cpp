@@ -4,6 +4,7 @@
 #include <queue>
 #include <map>
 #include <sstream>
+#include <iomanip>
 using namespace std;
 
 string source_path = "source.txt";
@@ -37,6 +38,14 @@ struct instruction
     int is_directive = 0;
 };
 
+string ToHexString(int source, int string_length)
+{
+    ostringstream ss;
+    ss << uppercase << setfill('0') << setw(string_length) << hex << source;
+    string result = ss.str();
+    return result;
+}
+
 int main()
 {
     map<int, instruction> instructs;
@@ -64,6 +73,12 @@ int main()
     string s = "0x" + instructs[0x0].operand;
     location_counter = std::stoul(s, nullptr, 16);
     instructs[0x0].loc_count = location_counter;
+
+    ////////
+    /*
+    START Pass 1
+    */
+    ////////
 
     // pass1 > 計算location counter & Symbol Table
     while (getline(file_source, row))
@@ -129,10 +144,10 @@ int main()
     auto iter_inst = instructs.begin();
     while (iter_inst != instructs.end())
     {
-        ofs << hex << iter_inst->second.loc_count << "\t";
-        ofs << iter_inst->second.label << "\t";
-        ofs << iter_inst->second.opcode << "\t";
-        ofs << iter_inst->second.operand << endl;
+        ofs << hex << iter_inst->second.loc_count;
+        ofs << setw(8) << iter_inst->second.label;
+        ofs << setw(8) << iter_inst->second.opcode;
+        ofs << setw(10) << iter_inst->second.operand << endl;
         ++iter_inst;
     }
     ofs.close();
@@ -142,14 +157,16 @@ int main()
     auto iter_symtab = symtab.begin();
     while (iter_symtab != symtab.end())
     {
-        ofs << iter_symtab->first << "\t" << iter_symtab->second << endl;
+        ofs << setw(8) << std::left << iter_symtab->first << uppercase << iter_symtab->second << endl;
         ++iter_symtab;
     }
     ofs.close();
 
+    ////////
     /*
     START Pass 2
     */
+    ////////
 
     // 讀取 opcode table，先將opcode table建立map
     ifstream file_opcode(opcode_path, ifstream::in);
@@ -162,6 +179,76 @@ int main()
         row_values.pop();
         optab[opcode] = row_values.front();
         row_values.pop();
-        cout << opcode << " " << optab[opcode] << endl;
     }
+
+    iter_inst = instructs.begin();
+    while (iter_inst != instructs.end())
+    {
+        if (iter_inst->second.is_directive != 1)
+        {
+            if (iter_inst->second.opcode == "BYTE")
+            {
+                // BYTE系列另外處理
+                if (iter_inst->second.operand[0] == 'C')
+                {
+                    // C: 將字串轉成ASCII 16進位
+                    string real_operand = iter_inst->second.operand.substr(2, iter_inst->second.operand.size() - 3);
+                    for (unsigned i = 0; i < real_operand.size(); i++)
+                    {
+                        iter_inst->second.obj_code += ToHexString(int(real_operand[i]), 2);
+                    }
+                }
+                else if (iter_inst->second.operand[0] == 'X')
+                {
+                    // X: 直接輸出文字
+                    iter_inst->second.obj_code = iter_inst->second.operand.substr(2, iter_inst->second.operand.size() - 3);
+                }
+            }
+            else if (iter_inst->second.opcode == "RESW" || iter_inst->second.opcode == "RESB")
+            {
+                // RES 系列不產生 object code
+                // Do nothing
+            }
+            else if (iter_inst->second.opcode == "WORD")
+            {
+                // WORD 把後面數值直接轉16進位並補滿6位
+                int number = stoi(iter_inst->second.operand);
+                iter_inst->second.obj_code = ToHexString(number, 6);
+            }
+            else if (iter_inst->second.opcode == "RSUB")
+            {
+                // RSUB 輸出OP code 後面補滿0
+                iter_inst->second.obj_code = optab[iter_inst->second.opcode] + "0000";
+            }
+            else if (iter_inst->second.operand.find(",X") != std::string::npos)
+            {
+                // Index addressing, add 0x8000讓 X bit == 1
+                string real_operand = iter_inst->second.operand.substr(0, iter_inst->second.operand.size() - 2);
+                iter_inst->second.obj_code = optab[iter_inst->second.opcode] + ToHexString(symtab[real_operand] + 0x8000, 4);
+            }
+            else
+            {
+                iter_inst->second.obj_code = optab[iter_inst->second.opcode] + ToHexString(symtab[iter_inst->second.operand], 4);
+            }
+        }
+
+        ++iter_inst;
+    }
+
+    // Pass2 寫入檔案-加入object code 的instructs
+    ofs.open(pass2_instructions_path);
+    iter_inst = instructs.begin();
+    while (iter_inst != instructs.end())
+    {
+        if (iter_inst->second.loc_count != 0)
+            ofs << setw(6) << std::left << hex << iter_inst->second.loc_count;
+        else
+            ofs << setw(6) << std::left << "";
+        ofs << setw(8) << std::right << iter_inst->second.label;
+        ofs << setw(8) << iter_inst->second.opcode;
+        ofs << setw(10) << iter_inst->second.operand;
+        ofs << setw(10) << iter_inst->second.obj_code << endl;
+        ++iter_inst;
+    }
+    ofs.close();
 }
