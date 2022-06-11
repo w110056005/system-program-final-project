@@ -189,9 +189,9 @@ int main()
     int inst_count = 0;
     int next_line_flag = 0;
     int line = 0;
-    int text_start = 0x0;
-    int text_end = 0x0;
-    int increase_end = 1;
+    int line_start = 0x0;
+    int line_end = 0x0;
+    int add_line_length = 1;
     string text = "";
 
     iter = instructs.begin();
@@ -199,25 +199,24 @@ int main()
     {
         if (iter->second.is_directive != 1)
         {
-            if (increase_end)
+            if (add_line_length)
             {
-                text_end = iter->second.loc_count;
-                increase_end = 1;
+                line_end = iter->second.loc_count;
             }
 
             if (inst_count == 10 || next_line_flag)
             {
                 // object program 一行滿了，寫入並換行
                 ostringstream ss;
-                ss << "T " << uppercase << hex << text_start << " " << ToHexString(text_end - text_start, 2) << text;
+                ss << "T " << uppercase << hex << line_start << " " << ToHexString(line_end - line_start, 2) << text;
                 object_program[line++] = ss.str();
 
                 // reset 所有flag
                 inst_count = 0;
                 next_line_flag = 0;
-                text_start = iter->second.loc_count;
+                line_start = iter->second.loc_count;
                 text = "";
-                increase_end = 1;
+                add_line_length = 1;
             }
 
             if (iter->second.opcode == "BYTE")
@@ -238,17 +237,14 @@ int main()
                     iter->second.obj_code = iter->second.operand.substr(2, iter->second.operand.size() - 3);
                 }
             }
-            else if (iter->second.opcode == "RESW")
+            else if (iter->second.opcode == "RESW" || iter->second.opcode == "RESB")
             {
-                // RES 系列不產生 object code
-                increase_end = 0;
-            }
-            else if (iter->second.opcode == "RESB")
-            {
-                // RES 系列不產生 object code
-                // 遇到 RESB 要換行
-                next_line_flag = 1;
-                increase_end = 0;
+                // RES 系列不產生 object code，所以不計算line length
+                add_line_length = 0;
+                
+                if (iter->second.opcode == "RESB")
+                    // 遇到 RESB 要換行
+                    next_line_flag = 1;
             }
             else if (iter->second.opcode == "WORD")
             {
@@ -287,13 +283,13 @@ int main()
                 ostringstream ss;
                 ss << "H " << iter->second.label << " " << ToHexString(iter->second.loc_count, 6) << " " << uppercase << hex << location_counter - instructs[0x0].loc_count;
                 object_program[line++] += ss.str();
-                text_start = iter->second.loc_count;
+                line_start = iter->second.loc_count;
             }
             else if (iter->second.opcode == "END")
             {
                 // 紀錄最後一組text
                 ostringstream ss1;
-                ss1 << "T " << uppercase << hex << text_start << " " << ToHexString(location_counter - text_start, 2) << text;
+                ss1 << "T " << uppercase << hex << line_start << " " << ToHexString(location_counter - line_start, 2) << text;
                 object_program[line++] = ss1.str();
 
                 // 寫入 E line
