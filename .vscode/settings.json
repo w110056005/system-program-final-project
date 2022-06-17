@@ -1,7 +1,7 @@
 {
     "code-runner.ignoreSelection": true,
     "code-runner.executorMap": {
-        "cpp": "g++ -Wall -Wextra -O2 -std=c++14 \"$fileName\" -o \"$fileNameWithoutExt\" & $dir\"$fileNameWithoutExt\""
+        "cpp": "g++ -Wall -Wextra -O2 -std=c++11 \"$fileName\" -o \"$fileNameWithoutExt\" & $dir\"$fileNameWithoutExt\""
     },
     "code-runner.preserveFocus": false,
     "code-runner.clearPreviousOutput": true,

@@ -102,13 +102,13 @@ int main()
         if (instructs[location_counter].opcode == "END")
         {
             instructs[location_counter].is_directive = 1;
-            continue;
+            break;
         }
         else
             instructs[location_counter].loc_count = location_counter;
 
-        // 如果有label 就寫到 Symbol table
-        if (!instructs[location_counter].label.empty())
+        // 如果有label且Symbol table 尚未有此record就寫到 Symbol table
+        if (!instructs[location_counter].label.empty() && !symtab.count(instructs[location_counter].label))
         {
             symtab[instructs[location_counter].label] = location_counter;
         }
@@ -148,7 +148,10 @@ int main()
     auto iter = instructs.begin();
     while (iter != instructs.end())
     {
-        ofs << hex << iter->second.loc_count;
+        if (iter->second.loc_count != 0)
+            ofs << setw(6) << uppercase << std::left << hex << iter->second.loc_count;
+        else
+            ofs << setw(6) << std::left << "";
         ofs << setw(8) << iter->second.label;
         ofs << setw(8) << iter->second.opcode;
         ofs << setw(10) << iter->second.operand << endl;
@@ -208,7 +211,7 @@ int main()
             {
                 // object program 一行滿了，寫入並換行
                 ostringstream ss;
-                ss << "T " << uppercase << hex << line_start << " " << ToHexString(line_end - line_start, 2) << text;
+                ss << "T " << setfill('0') << setw(6) << uppercase << hex << line_start << " " << ToHexString(line_end - line_start, 2) << text;
                 object_program[line++] = ss.str();
 
                 // reset 所有flag
@@ -241,7 +244,7 @@ int main()
             {
                 // RES 系列不產生 object code，所以不計算line length
                 add_line_length = 0;
-                
+
                 if (iter->second.opcode == "RESB")
                     // 遇到 RESB 要換行
                     next_line_flag = 1;
@@ -281,7 +284,7 @@ int main()
             {
                 // 寫入 H line
                 ostringstream ss;
-                ss << "H " << iter->second.label << " " << ToHexString(iter->second.loc_count, 6) << " " << uppercase << hex << location_counter - instructs[0x0].loc_count;
+                ss << "H " << setw(6) << std::left << iter->second.label << " " << ToHexString(iter->second.loc_count, 6) << " " << uppercase << hex << location_counter - instructs[0x0].loc_count;
                 object_program[line++] += ss.str();
                 line_start = iter->second.loc_count;
             }
@@ -289,7 +292,7 @@ int main()
             {
                 // 紀錄最後一組text
                 ostringstream ss1;
-                ss1 << "T " << uppercase << hex << line_start << " " << ToHexString(location_counter - line_start, 2) << text;
+                ss1 << "T " << setfill('0') << setw(6) << uppercase << hex << line_start << " " << ToHexString(location_counter - line_start, 2) << text;
                 object_program[line++] = ss1.str();
 
                 // 寫入 E line
@@ -308,7 +311,7 @@ int main()
     while (iter != instructs.end())
     {
         if (iter->second.loc_count != 0)
-            ofs << setw(6) << std::left << hex << iter->second.loc_count;
+            ofs << setw(6) << uppercase << std::left << hex << iter->second.loc_count;
         else
             ofs << setw(6) << std::left << "";
         ofs << setw(8) << std::right << iter->second.label;
